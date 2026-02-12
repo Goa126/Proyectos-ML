@@ -133,3 +133,21 @@ JOIN olist_products p ON oi.product_id = p.product_id
 JOIN product_category_name_translation pct ON p.product_category_name = pct.product_category_name
 GROUP BY 1
 ORDER BY cantidad_vendida DESC;
+
+-- Recomendación de productos
+CREATE OR REPLACE VIEW v_recom_data AS
+SELECT 
+    c.customer_unique_id,
+    p.product_id,
+    p.product_category_name,
+    t.product_category_name_english,
+    o.order_id,
+    o.order_purchase_timestamp,
+    oi.price,
+    COALESCE(r.review_score, 0) AS review_score
+FROM olist_customers c
+JOIN olist_orders o ON c.customer_id = o.customer_id
+JOIN olist_order_items oi ON o.order_id = oi.order_id
+JOIN olist_products p ON oi.product_id = p.product_id
+LEFT JOIN product_category_name_translation t ON p.product_category_name = t.product_category_name
+LEFT JOIN olist_order_reviews r ON o.order_id = r.order_id;

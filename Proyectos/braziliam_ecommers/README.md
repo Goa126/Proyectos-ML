@@ -12,11 +12,13 @@ braziliam_ecommers/
 ├── data/                       # Dataset original (archivos CSV de Olist)
 ├── notebooks/                  # Jupyter Notebooks con el análisis y modelado
 │   ├── analisis_series_temporales.ipynb  # EDA, Series Temporales, Clustering y ML Predictivo
-│   └── sistemas_de_recomendacion.ipynb   # (En desarrollo) Motores de recomendación
+│   └── sistemas_de_recomendacion.ipynb   # Motores de recomendación (Similitud y Cross-Selling)
 ├── sql/                        # Scripts SQL para la base de datos
 │   └── sql_braziliam.sql       # Schema, PKs, FKs y creación de Vistas Analíticas
-├── src/                        # Código fuente modular (funciones auxiliares)
-├── models/                     # Modelos entrenados serializados (pkl/joblib)
+├── src/                        # Código fuente modular
+│   ├── main.py                 # API REST con FastAPI
+│   └── save_models.py          # Script de persistencia de modelos
+├── models/                     # Artefactos de modelos (Archivos .pkl)
 ├── requirements.txt            # Dependencias del proyecto
 └── .env                        # Variables de entorno (credenciales de BD)
 ```
@@ -24,7 +26,7 @@ braziliam_ecommers/
 ## 🛠️ Tecnologías Utilizadas
 *   **Lenguaje:** Python 3.12+
 *   **Base de Datos:** PostgreSQL
-*   **Librerías Principales:** `pandas`, `numpy`, `matplotlib`, `seaborn`, `scikit-learn`, `sqlalchemy`, `python-dotenv`.
+*   **Librerías Principales:** `pandas`, `numpy`, `matplotlib`, `seaborn`, `scikit-learn`, `sqlalchemy`, `python-dotenv`, `fastapi`, `uvicorn`, `joblib`.
 
 ## 📊 Flujo de Trabajo y Metodología
 
@@ -51,6 +53,23 @@ Entrenamiento de un modelo de **Random Forest Classifier** para predecir si un c
     *   **Costo del Flete:** Sorpresivamente, un flete caro genera más insatisfacción que un producto caro.
     *   **Dimensiones:** Productos voluminosos tienen mayor tasa de incidencia.
 
+### 5. Motores de Recomendación
+Se implementaron dos motores de recomendación para atacar diferentes objetivos de negocio:
+*   **Modelo 1: Similitud de Productos (Content-Based):** 
+    *   Utiliza *Cosine Similarity* para encontrar sustitutos directos basados en categoría, precio y calidad (`review_score`).
+    *   Objetivo: Ayudar al usuario a comparar opciones similares.
+*   **Modelo 2: Venta Cruzada (Cross-Selling / Association):** 
+    *   Analiza la co-ocurrencia de productos en un mismo carrito de compras, filtrando conexiones entre categorías diferentes.
+    *   Objetivo: Sugerir complementos lógicos y aumentar el valor del pedido (ej. *Home Comfort* -> *Bed Bath Table*).
+
+### 6. Despliegue de API (FastAPI)
+Se desarrolló una API REST para consumir las recomendaciones en tiempo real sin necesidad de recalcular los modelos.
+*   **Persistencia:** Los modelos se pre-procesan y serializan mediante `joblib` para una carga instantánea.
+*   **Endpoints:**
+    *   `GET /recomendar/similares/{product_id}`: Retorna top N productos similares.
+    *   `GET /recomendar/cruzada/{product_id}`: Retorna productos complementarios (cross-selling).
+    *   `GET /docs`: Documentación interactiva de la API con Swagger UI.
+
 ## ⚙️ Instalación y Configuración
 
 1.  **Clonar el repositorio:**
@@ -76,12 +95,22 @@ Entrenamiento de un modelo de **Random Forest Classifier** para predecir si un c
     DB_NAME=nombre_base_datos
     ```
 
-4.  **Ejecutar Notebooks:**
-    Iniciar Jupyter Lab o Notebook para explorar `notebooks/analisis_series_temporales.ipynb`.
+4.  **Generar Artefactos de Modelos:**
+    Para que la API funcione, primero debes generar los archivos `.pkl`:
+    ```bash
+    python src/save_models.py
+    ```
+
+5.  **Iniciar la API:**
+    ```bash
+    uvicorn src.main:app --reload
+    ```
+    Accede a la documentación en: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 ## 📈 Próximos Pasos
-*   Desarrollo de un **Sistema de Recomendación** híbrido (Collaborative Filtering + Content-Based) en `sistemas_de_recomendacion.ipynb`.
-*   Despliegue del modelo predictivo como API.
+*   Implementación de **Filtrado Colaborativo Profundo** (Deep Learning) para personalización avanzada.
+*   Contenerización de la API mediante **Docker**.
+*   Configuración de un pipeline de CI/CD para el despliegue automático.
 
 ---
-*Autor: [Tu Nombre]*
+*Autor: Gogol Andrés*
