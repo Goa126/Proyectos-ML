@@ -1,0 +1,11 @@
+# Ignorar todo el contenido de la carpeta Bonsai_Corp por defecto
+*
+
+# Permitir que git busque dentro de subdirectorios
+!*/
+
+# Excepciones de archivos y carpetas permitidas
+!.gitignore
+!Bonsai_Corp.ipynb
+!requirements.txt
+!data/**
