@@ -11,31 +11,31 @@ class Solvente:
         self.A = A
         self.B = B
         self.C = C
-        self.rango_T = rango_T #Tupla opcional (T_min, T_max) en Celsius
+        self.rango_T = rango_T  # Tupla opcional (T_min, T_max) en Celsius
 
     def _verificar_rango(self, T_C):
         """
         Método interno de seguridad. Revisa si la temperatura solicitada 
-        está dentro del rango experimental válido para estas constantes.
+        está dentro del rango experimental válido, compatible con floats y arrays de NumPy.
         """
         if self.rango_T is not None:
             t_min, t_max = self.rango_T
-            if T_C < t_min or T_C > t_max:
+            # Conversión temporal a array para asegurar compatibilidad de vectorización
+            T_arr = np.atleast_1d(T_C)
+            
+            # np.any permite verificar si al menos un elemento del vector viola los límites
+            if np.any(T_arr < t_min) or np.any(T_arr > t_max):
                 warnings.warn(
                     f"\n[ALERTA TERMODINÁMICA] Para '{self.nombre}': "
-                    f"La temperatura {T_C:.2f} °C está fuera del rango válido "
-                    f"({t_min} a {t_max} °C). ¡El cálculo es una extrapolación y puede ser erróneo!"
+                    f"Se detectó una temperatura fuera del rango válido ({t_min} a {t_max} °C). "
+                    f"¡El cálculo es una extrapolación y puede ser erróneo!",
+                    category=RuntimeWarning
                 )    
 
     def presion_saturacion(self, T_C):
         """
         Calcula la presión de vapor (saturación) a una temperatura dada.
-
-        Parámetros:
-        T_C (float): Temperatura en grados Celsius.
-
-        Retorna:
-        float: Presión de vapor en mmHg.
+        Soporta valores individuales (floats) y arreglos de NumPy.
         """
         self._verificar_rango(T_C)
         return 10**(self.A - (self.B / (T_C + self.C)))
@@ -43,23 +43,27 @@ class Solvente:
     def temperatura_ebullicion(self, P_total_mbar):
         """
         Calcula la temperatura a la cual el solvente hierve a la presión del horno.
-
-        Parámetros:
-        P_total_mbar (float): Presión total del sistema de vacío en mbar.
-
-        Retorna:
-        float: Temperatura de ebullición teórica en grados Celsius.
+        Incluye salvaguardas físicas para simulación numérica y verificación de rangos.
         """
+        # Salvaguarda física: si la presión es cero o negativa, se asume vacío absoluto teórico
+        # o se limita a un valor mínimo positivo muy pequeño (1e-5 mbar) para evitar fallos matemáticos
+        P_safe = np.maximum(P_total_mbar, 1e-5)
+
         # Conversión de mbar a mmHg (unidad de las constantes de Antoine)
-        P_total_mmHg = P_total_mbar * 0.750062
+        P_total_mmHg = P_safe * 0.750062
 
         # Despejando T de la ecuación de Antoine
-        # CORRECCIÓN 2: Cambiar P_mmHg por P_total_mmHg
         T_sat = (self.B / (self.A - np.log10(P_total_mmHg))) - self.C
+        
+        # Corrección: Verificar rango del resultado calculado
+        self._verificar_rango(T_sat)
+        
         return T_sat
 
 # ==========================================
 # BASE DE DATOS DE SOLVENTES
 # ==========================================
+# Constantes validadas de 1 a 100 °C
 Agua = Solvente("Agua", 8.07131, 1730.63, 233.426, (1, 100))
+# Constantes validadas de -57 a 80 °C
 Etanol = Solvente("Etanol", 8.20417, 1642.89, 230.300, (-57, 80))
