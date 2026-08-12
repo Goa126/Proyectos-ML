@@ -81,35 +81,43 @@ def edos_acopladas_nivel(t_min, y, T_placa_C, P_vac_mbar, U, A_placa, m_seco, X_
     X, T_b = y
     
     T_eb = termodinamica.Agua.temperatura_ebullicion(P_vac_mbar)
-    k_T, g_T, a, b = coeficientes_jena_das(T_b)
-    
-    t_eff = max(1e-4, t_min)
-    dMR_dt = - a * k_T * np.exp(-k_T * t_eff) - b * g_T * np.exp(-g_T * t_eff)
-    
-    if X > X_eq:
-        dX_dt = (X_0 - X_eq) * dMR_dt
-        dX_dt = min(0.0, dX_dt)
-    else:
-        dX_dt = 0.0
-        
-    m_evap_kgs = - (dX_dt / 60.0) * m_seco
-    
-    U_efectivo = U * (0.35 + 0.65 * max(0.02, X / X_0))
-    Q_conduccion = U_efectivo * A_placa * (T_placa_C - T_b)
-    
     h_fg = 2501000.0 - 2370.0 * T_b
-    Q_evaporacion = m_evap_kgs * h_fg
+    U_efectivo = U * (0.35 + 0.65 * max(0.02, X / X_0))
     
-    Cp_lecho = m_seco * (CP_BIOMASA + X * CP_AGUA)
-    dT_b_dt = 60.0 * (Q_conduccion - Q_evaporacion) / max(10.0, Cp_lecho)
-    
-    if T_b >= T_eb and X > 0.5 and Q_conduccion > 0:
-        dT_b_dt = min(dT_b_dt, 0.05 * (T_placa_C - T_b))
-
+    # Lógica de acoplamiento termofísico real
+    if X > 0.4 and T_b >= T_eb:  # Período de velocidad constante controlado por transferencia de calor
+        T_b = T_eb
+        dT_b_dt = 0.0
+        # La evaporación es igual al calor neto que ingresa por conducción dividido por h_fg
+        Q_conduccion = U_efectivo * A_placa * (T_placa_C - T_eb)
+        m_evap_kgs = Q_conduccion / h_fg
+        dX_dt = - (m_evap_kgs * 60.0) / m_seco
+    else:  # Período de velocidad decreciente controlado por difusión interna (Jena & Das)
+        k_T, g_T, a, b = coeficientes_jena_das(T_b)
+        
+        # Tiempo efectivo equivalente basado en el estado de humedad para evitar estancamiento
+        MR = (X - X_eq) / (X_0 - X_eq)
+        t_eff = - np.log(max(1e-6, MR)) / k_T
+        
+        dMR_dt = - a * k_T * np.exp(-k_T * t_eff) - b * g_T * np.exp(-g_T * t_eff)
+        
+        if X > X_eq:
+            dX_dt = (X_0 - X_eq) * dMR_dt
+            dX_dt = min(0.0, dX_dt)
+        else:
+            dX_dt = 0.0
+            
+        m_evap_kgs = - (dX_dt / 60.0) * m_seco
+        Q_conduccion = U_efectivo * A_placa * (T_placa_C - T_b)
+        Q_evaporacion = m_evap_kgs * h_fg
+        
+        Cp_lecho = m_seco * (CP_BIOMASA + X * CP_AGUA)
+        dT_b_dt = 60.0 * (Q_conduccion - Q_evaporacion) / max(10.0, Cp_lecho)
+        
     return [dX_dt, dT_b_dt]
 
 
-def simular_secado_nivel(t_total_min=30.0, T_placa_C=55.0, P_vac_mbar=30.0, X_0=3.0, X_eq=0.0526, U=50.0, A_placa=18.57, m_seco=4.964):
+def simular_secado_nivel(t_total_min=30.0, T_placa_C=55.0, P_vac_mbar=30.0, X_0=3.0, X_eq=0.0526, U=50.0, A_placa=18.57, m_seco=17.375):
     """
     Resuelve el sistema diferencial acoplado para un tiempo de residencia de 30 min en un nivel.
     """
@@ -198,7 +206,7 @@ class BeltCascadeDryer:
         Ejecuta el bucle en cascada desde el Nivel 1 hasta el Nivel 7.
         """
         t_res_nivel_min = self.calcular_tiempo_residencia()
-        m_seco_nivel = self.m_seco_kgh / self.n_niveles
+        m_seco_nivel = self.m_seco_kgh * (t_res_nivel_min / 60.0)
         X_eq = 0.0526
         
         X_actual = self.X_0
@@ -219,7 +227,7 @@ class BeltCascadeDryer:
             X_in_nivel = X_actual
             T_in_nivel = T_actual
             
-            t_span = (0.0, t_res_nivel_min)
+            t_span = ((i - 1) * t_res_nivel_min, i * t_res_nivel_min)
             y0 = [X_in_nivel, T_in_nivel]
             
             sol = solve_ivp(
@@ -232,13 +240,13 @@ class BeltCascadeDryer:
                 max_step=t_res_nivel_min / 15.0
             )
             
-            t_eval = np.linspace(0.0, t_res_nivel_min, 30)
+            t_eval = np.linspace((i - 1) * t_res_nivel_min, i * t_res_nivel_min, 30)
             y_eval = sol.sol(t_eval)
             
             for k in range(1, len(t_eval)):
-                t_rel = t_eval[k]
+                t_rel = t_eval[k] - (i - 1) * t_res_nivel_min
                 dist_rel = t_rel * self.v_belt_m_min
-                tiempo_acum_min.append(tiempo_global + t_rel)
+                tiempo_acum_min.append(t_eval[k])
                 distancia_acum_m.append(distancia_global + dist_rel)
                 nivel_registro.append(i)
                 X_hist.append(max(X_eq, y_eval[0, k]))
